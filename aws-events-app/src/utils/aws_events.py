@@ -1,23 +1,15 @@
 def get_ec2_events(session):
-    ec2 = session.client("ec2")
-    response = ec2.describe_instance_status(
-        IncludeAllInstances=True
+    ec2_client = session.client('ec2')
+    response = ec2_client.describe_instance_status(
+        IncludeAllInstances=True,
+        Filters=[
+            {
+                'Name': 'event.code',
+                'Values': ['instance-reboot', 'instance-retirement', 'instance-stop']
+            }
+        ]
     )
-    print(response)
-    events = []
-    for status in response.get("InstanceStatuses", []):
-        instance_id = status["InstanceId"]
-        for event in status.get("Events", []):
-            events.append({
-                "InstanceId": instance_id,
-                "EventId": event.get("InstanceEventId"),
-                "EventType": event.get("Code"),
-                "Description": event.get("Description"),
-                "NotBefore": event.get("NotBefore"),
-                "NotAfter": event.get("NotAfter"),
-                "State": event.get("NotBefore"),
-            })
-    return events
+    return response['InstanceStatuses']
 
 
 def get_ebs_events(session):
