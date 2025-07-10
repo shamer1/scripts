@@ -1,50 +1,56 @@
 import boto3
 
+def get_instance_details(session, instance_ids):
+    """Fetch tag values and private IP for a list of instance IDs."""
+    ec2 = session.client("ec2")
+    details = {}
+    if not instance_ids:
+        return details
+    response = ec2.describe_instances(InstanceIds=instance_ids)
+    for reservation in response["Reservations"]:
+        for instance in reservation["Instances"]:
+            tags = {tag["Key"]: tag["Value"] for tag in instance.get("Tags", [])}
+            details[instance["InstanceId"]] = {
+                "crdb_cluster_name": tags.get("crdb_cluster_name"),
+                "tier": tags.get("tier"),
+                "node_id": tags.get("node_id"),
+                "private_ip": instance.get("PrivateIpAddress"),
+            }
+    return details
+
 def get_health_events(session):
     health = session.client("health", region_name="us-east-1")
     response = health.describe_events()
     events = []
     for event in response.get("events", []):
         if event.get("statusCode") == "upcoming":
-            # Get affected entities for this event
             entities_resp = health.describe_affected_entities(
                 filter={"eventArns": [event["arn"]]}
             )
-            instance_ids = []
-            for entity in entities_resp.get("entities", []):
-                if entity.get("entityValue", "").startswith("i-"):
-                    instance_ids.append(entity["entityValue"])
+            instance_ids = [
+                entity["entityValue"]
+                for entity in entities_resp.get("entities", [])
+                if entity.get("entityValue", "").startswith("i-")
+            ]
+            # Lookup instance details for these IDs
+            instance_details = get_instance_details(session, instance_ids)
             events.append({
-                #"Arn": event.get("arn"),
-                #"Service": event.get("service"),
                 "EventTypeCode": event.get("eventTypeCode"),
-                #"EventTypeCategory": event.get("eventTypeCategory"),
-                #"StartTime": event.get("startTime"),
-                #"EndTime": event.get("endTime"),
-                #"StatusCode": event.get("statusCode"),
-                #"Region": event.get("region"),
                 "InstanceIds": instance_ids,
+                "InstanceDetails": instance_details,
             })
     return events
 
 def main():
-    # Initialize the boto3 session (uses default credentials)
     session = boto3.Session()
-
-    # Import the utility functions
     from utils.aws_events import get_ec2_events, get_ebs_events
 
-    # Retrieve scheduled EC2 and EBS events
     ec2_events = get_ec2_events(session)
     ebs_events = get_ebs_events(session)
-
-    # Retrieve AWS Health events (filtered for 'upcoming' status)
     health_events = get_health_events(session)
 
-    # Print the events
     print("Scheduled EC2 Events (Status: upcoming):")
     for event in ec2_events:
-        # Only print EC2 events with StatusCode 'upcoming'
         if event.get("StatusCode") == "upcoming":
             print(event)
 
@@ -71,7 +77,16 @@ def main():
 
     print("\nAWS Health Events (Status: upcoming):")
     for event in health_events:
-        print(event)
+        print(f"EventTypeCode: {event['EventTypeCode']}")
+        for instance_id in event["InstanceIds"]:
+            details = event["InstanceDetails"].get(instance_id, {})
+            print(
+                f"  InstanceId: {instance_id}, "
+                f"crdb_cluster_name: {details.get('crdb_cluster_name')}, "
+                f"tier: {details.get('tier')}, "
+                f"node_id: {details.get('node_id')}, "
+                f"private_ip: {details.get('private_ip')}"
+            )
 
 if __name__ == "__main__":
     main()
