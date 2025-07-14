@@ -53,7 +53,7 @@ def get_jira_credentials_from_1password():
 def create_jira_issue(jira, project_key, summary, description, epic_key):
     issue_dict = {
         'project': {'key': project_key},
-        'summary': summary,
+        'summary': summary + description ,
         'description': description,
         'issuetype': {'name': 'Task'},
         'labels': ['alerts'],
@@ -80,7 +80,7 @@ if __name__ == "__main__":
 
     for cluster, alerts in yellow_alerts.items():
         for alert in alerts:
-            summary = f"Yellow Alert for {cluster}"
+            summary = f"Alert for {cluster} : "
             description = alert
             issue = create_jira_issue(jira, project_key, summary, description, epic_key)
             print(f"Created Jira issue {issue.key} for cluster {cluster}: {alert}")
