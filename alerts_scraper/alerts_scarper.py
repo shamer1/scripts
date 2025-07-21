@@ -3,6 +3,7 @@ from pathlib import Path
 from collections import defaultdict
 from jira import JIRA
 from onepassword import OnePassword
+import argparse
 
 
 
@@ -66,6 +67,12 @@ def create_jira_issue(jira, project_key, summary, description, epic_key):
 
 if __name__ == "__main__":
     alerts_path = Path.home() / "Documents" / "ALERTS"
+    parser = argparse.ArgumentParser(description="Alert scraper and Jira creator")
+    parser.add_argument("--dry_run", required=True, choices=["true", "false"], help="If true, do not create Jira issues, just print actions.")
+
+    args = parser.parse_args()
+    dry_run = args.dry_run.lower() == "true"
+    
     yellow_alerts, red_alerts = extract_alerts(alerts_path)
 
     # Jira setup
@@ -82,12 +89,18 @@ if __name__ == "__main__":
         for alert in alerts:
             summary = f"Alert for {cluster} : "
             description = alert
-            issue = create_jira_issue(jira, project_key, summary, description, epic_key)
-            print(f"Created Jira issue {issue.key} for cluster {cluster}: {alert}")
+            if dry_run == False:
+                issue = create_jira_issue(jira, project_key, summary, description, epic_key)
+                print(f"Created Jira issue {issue.key} for cluster {cluster}: {alert}")
+            else:
+                print(f"DRY RUN MODE, WE WOULD CREATE: Jira issue, for cluster {cluster}: {alert}")
 
     for cluster, alerts in red_alerts.items():
         for alert in alerts:
             summary = f"Red Alert for {cluster}"
             description = alert
-            issue = create_jira_issue(jira, project_key, summary, description, epic_key)
-            print(f"Created Jira issue {issue.key} for cluster {cluster}: {alert}")
+            if dry_run == False:
+                issue = create_jira_issue(jira, project_key, summary, description, epic_key)
+                print(f"Created Jira issue {issue.key} for cluster {cluster}: {alert}")
+            else:
+                print(f"DRY RUN MODE, WE WOULD CREATE: Jira issue, for cluster {cluster}: {alert}")
