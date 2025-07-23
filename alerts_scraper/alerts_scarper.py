@@ -84,6 +84,7 @@ def search_existing_jira_issues(jira, project_key, summary, days=30):
 
 if __name__ == "__main__":
     alerts_path = Path.home() / "Documents" / "ALERTS"
+    health_path = Path.home() / "Desktop" / "HEALTH"
     parser = argparse.ArgumentParser(description="Alert scraper and Jira creator")
     parser.add_argument("--dry_run", required=True, choices=["true", "false"], help="If true, do not create Jira issues, just print actions.")
 
@@ -91,6 +92,16 @@ if __name__ == "__main__":
     dry_run = args.dry_run.lower() == "true"
     
     yellow_alerts, red_alerts = extract_alerts(alerts_path)
+
+    # Parse HEALTH file, sort and unique
+    health_issues = set()
+    if health_path.exists():
+        with open(health_path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    health_issues.add(line)
+    health_issues = sorted(health_issues)
 
     # Jira setup
     username, password, hostname = get_jira_credentials_from_1password()
@@ -136,3 +147,20 @@ if __name__ == "__main__":
                     print(f"CREATED: Jira issue {issue.key} for cluster {cluster}: {alert}")
                 else:
                     print(f"DRY RUN MODE, WOULD CREATE: Jira issue for cluster {cluster}: {alert}")
+
+    # Process HEALTH issues
+    for health_issue in health_issues:
+        summary = f"HEALTH: {health_issue}"
+        description = health_issue
+        existing_issues = search_existing_jira_issues(jira, project_key, summary.strip(), days=30)
+        found = False
+        for issue in existing_issues:
+            if health_issue in issue.fields.summary or health_issue in getattr(issue.fields, 'description', ''):
+                print(f"EXISTS: Jira issue {issue.key} for HEALTH: {health_issue}")
+                found = True
+        if not found:
+            if dry_run == False:
+                issue = create_jira_issue(jira, project_key, summary, description, epic_key)
+                print(f"CREATED: Jira issue {issue.key} for HEALTH: {health_issue}")
+            else:
+                print(f"DRY RUN MODE, WOULD CREATE: Jira issue for HEALTH: {health_issue}")
