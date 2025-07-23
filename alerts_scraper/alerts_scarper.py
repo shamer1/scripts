@@ -63,6 +63,23 @@ def create_jira_issue(jira, project_key, summary, description, epic_key):
     return jira.create_issue(fields=issue_dict)
 
 
+def search_existing_jira_issues(jira, project_key, summary, days=30):
+    """
+    Search for existing Jira issues in the given project with the given summary in the last N days.
+    Returns a list of matching issues.
+    """
+    from datetime import datetime, timedelta
+    since = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+    # Jira JQL: project = CRDBOP AND summary ~ "Alert for cluster" AND created >= -30d
+    jql = f'project = {project_key} AND summary ~ "{summary}" AND created >= "{since}"'
+    try:
+        issues = jira.search_issues(jql)
+        return issues
+    except Exception as e:
+        print(f"Error searching Jira: {e}")
+        return []
+
+
 
 
 if __name__ == "__main__":
@@ -89,18 +106,33 @@ if __name__ == "__main__":
         for alert in alerts:
             summary = f"Alert for {cluster} : "
             description = alert
-            if dry_run == False:
-                issue = create_jira_issue(jira, project_key, summary, description, epic_key)
-                print(f"Created Jira issue {issue.key} for cluster {cluster}: {alert}")
-            else:
-                print(f"DRY RUN MODE, WE WOULD CREATE: Jira issue, for cluster {cluster}: {alert}")
+            existing_issues = search_existing_jira_issues(jira, project_key, summary.strip(), days=30)
+            found = False
+            for issue in existing_issues:
+                # Check if alert text is in summary or description
+                if alert in issue.fields.summary or alert in getattr(issue.fields, 'description', ''):
+                    print(f"EXISTS: Jira issue {issue.key} for cluster {cluster}: {alert}")
+                    found = True
+            if not found:
+                if dry_run == False:
+                    issue = create_jira_issue(jira, project_key, summary, description, epic_key)
+                    print(f"CREATED: Jira issue {issue.key} for cluster {cluster}: {alert}")
+                else:
+                    print(f"DRY RUN MODE, WOULD CREATE: Jira issue for cluster {cluster}: {alert}")
 
     for cluster, alerts in red_alerts.items():
         for alert in alerts:
             summary = f"Red Alert for {cluster}"
             description = alert
-            if dry_run == False:
-                issue = create_jira_issue(jira, project_key, summary, description, epic_key)
-                print(f"Created Jira issue {issue.key} for cluster {cluster}: {alert}")
-            else:
-                print(f"DRY RUN MODE, WE WOULD CREATE: Jira issue, for cluster {cluster}: {alert}")
+            existing_issues = search_existing_jira_issues(jira, project_key, summary.strip(), days=30)
+            found = False
+            for issue in existing_issues:
+                if alert in issue.fields.summary or alert in getattr(issue.fields, 'description', ''):
+                    print(f"EXISTS: Jira issue {issue.key} for cluster {cluster}: {alert}")
+                    found = True
+            if not found:
+                if dry_run == False:
+                    issue = create_jira_issue(jira, project_key, summary, description, epic_key)
+                    print(f"CREATED: Jira issue {issue.key} for cluster {cluster}: {alert}")
+                else:
+                    print(f"DRY RUN MODE, WOULD CREATE: Jira issue for cluster {cluster}: {alert}")
