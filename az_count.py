@@ -28,7 +28,7 @@ def main():
     parser.add_argument('cluster_name', help='Value of the crdb_cluster_name tag to filter instances')
     args = parser.parse_args()
 
-    cluster_name = args.cluster_name.replace("-", "_")
+    cluster_name = args.cluster_name
     az_counts = count_instances_by_az(cluster_name)
 
     print(f"Instances in cluster '{args.cluster_name}' by Availability Zone:")

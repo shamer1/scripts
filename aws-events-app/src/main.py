@@ -52,7 +52,18 @@ def main():
     print("Scheduled EC2 Events (Status: upcoming):")
     for event in ec2_events:
         if event.get("StatusCode") == "upcoming":
-            print(event)
+            # Debug print for the full event
+            print("[DEBUG] Full EC2 Event:", event)
+            event_type = event.get("EventTypeCode", "")
+            instance_ids = event.get("InstanceIds") or event.get("Instances") or []
+            print(f"[DEBUG] EventTypeCode: {event_type}, InstanceIds: {instance_ids}, StatusCode: {event.get('StatusCode')}")
+            if event_type and "stop" in event_type.lower() and instance_ids:
+                for instance_id in instance_ids:
+                    print(f"EC2 instance stop scheduled: {instance_id}")
+            else:
+                if event_type:
+                    print(f"EC2 event scheduled: {event_type}")
+                print(event)
 
     print("\nScheduled EBS Events:")
     for event in ebs_events:
