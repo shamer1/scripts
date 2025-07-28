@@ -4,7 +4,7 @@ from collections import defaultdict
 from jira import JIRA
 from onepassword import OnePassword
 import argparse
-
+import sys
 
 
 def extract_alerts(filepath):
@@ -13,17 +13,23 @@ def extract_alerts(filepath):
     pattern = re.compile(r"\](.*?)\{")
     cluster_pattern = re.compile(r'cluster="([^"]+)"')
 
+    yellow_keys = [":large_yellow_circle:", ":yellow_circle:", "large_yellow_circle"]
+    red_keys = [":large_red_circle:", ":red_circle:", "large_red_circle"]
+
     with open(filepath, "r") as f:
         for line in f:
-            if "large_yellow_circle" in line or "large_red_circle" in line:
+            # Check for yellow or red event
+            is_yellow = any(key in line for key in yellow_keys)
+            is_red = any(key in line for key in red_keys)
+            if is_yellow or is_red:
                 match = pattern.search(line)
                 cluster_match = cluster_pattern.search(line)
                 if match and cluster_match:
                     alert_text = match.group(1).strip()
                     cluster_name = cluster_match.group(1)
-                    if "large_yellow_circle" in line:
+                    if is_yellow:
                         yellow[cluster_name].add(alert_text)
-                    else:
+                    elif is_red:
                         red[cluster_name].add(alert_text)
     return yellow, red
 
@@ -83,24 +89,56 @@ def search_existing_jira_issues(jira, project_key, summary, days=30):
 
 
 if __name__ == "__main__":
-    alerts_path = Path.home() / "Documents" / "ALERTS"
+
+    alerts_path = Path.home() / "Desktop" / "ALERTS"
     health_path = Path.home() / "Desktop" / "HEALTH"
     parser = argparse.ArgumentParser(description="Alert scraper and Jira creator")
     parser.add_argument("--dry_run", required=True, choices=["true", "false"], help="If true, do not create Jira issues, just print actions.")
 
     args = parser.parse_args()
     dry_run = args.dry_run.lower() == "true"
-    
+
+    # --- Reporting: ALERTS file line count ---
+    alerts_line_count = 0
+    with open(alerts_path, "r") as f:
+        alerts_lines = f.readlines()
+        alerts_line_count = len(alerts_lines)
+    print(f"[REPORT] ALERTS file contains {alerts_line_count} lines.")
+
+    # --- Reporting: Count yellow/red events before unique/sort ---
+    yellow_count_raw = 0
+    red_count_raw = 0
+    yellow_keys = [":large_yellow_circle:", ":yellow_circle:", "large_yellow_circle"]
+    red_keys = [":large_red_circle:", ":red_circle:", "large_red_circle"]
+    for line in alerts_lines:
+        if any(key in line for key in yellow_keys):
+            yellow_count_raw += 1
+        if any(key in line for key in red_keys):
+            red_count_raw += 1
+    print(f"[REPORT] ALERTS file yellow events (raw): {yellow_count_raw}")
+    print(f"[REPORT] ALERTS file red events (raw): {red_count_raw}")
+
     yellow_alerts, red_alerts = extract_alerts(alerts_path)
 
-    # Parse HEALTH file, sort and unique
+    # --- Reporting: Count yellow/red events after unique/sort ---
+    yellow_count_unique = sum(len(alerts) for alerts in yellow_alerts.values())
+    red_count_unique = sum(len(alerts) for alerts in red_alerts.values())
+    print(f"[REPORT] ALERTS file yellow events (unique): {yellow_count_unique}")
+    print(f"[REPORT] ALERTS file red events (unique): {red_count_unique}")
+
+    # --- Reporting: HEALTH file line count and unique count ---
+    health_line_count = 0
     health_issues = set()
     if health_path.exists():
         with open(health_path, "r") as f:
-            for line in f:
+            health_lines = f.readlines()
+            health_line_count = len(health_lines)
+            for line in health_lines:
                 line = line.strip()
                 if line:
                     health_issues.add(line)
+    print(f"[REPORT] HEALTH file contains {health_line_count} lines.")
+    print(f"[REPORT] HEALTH file unique issues: {len(health_issues)}")
     health_issues = sorted(health_issues)
 
     # Jira setup
