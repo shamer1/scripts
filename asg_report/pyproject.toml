@@ -1,0 +1,7 @@
+[project]
+name = "asg-report"
+version = "1.0.0"
+description = "List ASG details based on instance tag: crdb_cluster_name"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []
