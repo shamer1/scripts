@@ -29,7 +29,23 @@ import argparse
 
 
 def get_session(profile=None, region=None):
-    """Create boto3 session with optional profile and region."""
+    """Create boto3 session with optional profile and region.
+    
+    Args:
+        profile (str, optional): AWS profile name to use for authentication.
+            If None, uses default credentials chain. Defaults to None.
+        region (str, optional): AWS region to connect to. If None, uses
+            session's default region or falls back to us-east-1. Defaults to None.
+    
+    Returns:
+        tuple: A tuple containing:
+            - boto3.Session: Configured boto3 session object
+            - str: The region name that will be used for API calls
+    
+    Example:
+        >>> session, region = get_session('production', 'us-west-2')
+        >>> session, region = get_session()  # Use default profile and region
+    """
     if profile:
         session = boto3.Session(profile_name=profile)
     else:
@@ -43,7 +59,27 @@ def get_session(profile=None, region=None):
 
 
 def list_crdb_clusters(ec2_client, debug=False):
-    """List all unique crdb_cluster_name values from instance tags."""
+    """List all unique crdb_cluster_name values from instance tags.
+    
+    Scans all EC2 instances across the region to find unique values of the
+    'crdb_cluster_name' tag. This is useful for discovering available clusters
+    before running detailed reports.
+    
+    Args:
+        ec2_client (boto3.client): Configured EC2 client for API calls
+        debug (bool, optional): Enable verbose debug output showing discovery
+            progress and found clusters. Defaults to False.
+    
+    Returns:
+        list: Sorted list of unique CRDB cluster names found in instance tags.
+            Returns empty list if no clusters found or on error.
+    
+    Example:
+        >>> ec2 = session.client('ec2', region_name='us-west-2')
+        >>> clusters = list_crdb_clusters(ec2, debug=True)
+        >>> print(clusters)
+        ['cluster-prod', 'cluster-staging', 'cluster-test']
+    """
     try:
         crdb_clusters = set()
         paginator = ec2_client.get_paginator('describe_instances')
@@ -72,7 +108,28 @@ def list_crdb_clusters(ec2_client, debug=False):
 
 
 def get_instances_by_crdb_cluster(ec2_client, crdb_cluster_name, debug=False):
-    """Get all instances with a specific crdb_cluster_name tag."""
+    """Get all instances with a specific crdb_cluster_name tag.
+    
+    Efficiently retrieves EC2 instances that have a specific value for the
+    'crdb_cluster_name' tag using API filters. Only includes instances in
+    active states (pending, running, shutting-down, stopping, stopped).
+    
+    Args:
+        ec2_client (boto3.client): Configured EC2 client for API calls
+        crdb_cluster_name (str): The cluster name to filter instances by
+        debug (bool, optional): Enable verbose debug output showing search
+            progress and found instances. Defaults to False.
+    
+    Returns:
+        list: List of EC2 instance dictionaries matching the cluster name.
+            Each dictionary contains full instance details from the EC2 API.
+            Returns empty list if no instances found or on error.
+    
+    Example:
+        >>> ec2 = session.client('ec2', region_name='us-west-2')
+        >>> instances = get_instances_by_crdb_cluster(ec2, 'prod-cluster')
+        >>> print(f"Found {len(instances)} instances")
+    """
     try:
         instances = []
         
@@ -111,7 +168,28 @@ def get_instances_by_crdb_cluster(ec2_client, crdb_cluster_name, debug=False):
 
 
 def get_asgs_by_crdb_cluster(autoscaling_client, crdb_cluster_name, debug=False):
-    """Get all Auto Scaling Groups with a specific crdb_cluster_name tag."""
+    """Get all Auto Scaling Groups with a specific crdb_cluster_name tag.
+    
+    Searches through all Auto Scaling Groups in the region to find those
+    tagged with the specified crdb_cluster_name. This enables correlation
+    between instances and their managing ASGs.
+    
+    Args:
+        autoscaling_client (boto3.client): Configured Auto Scaling client for API calls
+        crdb_cluster_name (str): The cluster name to filter ASGs by
+        debug (bool, optional): Enable verbose debug output showing search
+            progress and found ASGs. Defaults to False.
+    
+    Returns:
+        list: List of Auto Scaling Group dictionaries matching the cluster name.
+            Each dictionary contains full ASG details from the Auto Scaling API.
+            Returns empty list if no ASGs found or on error.
+    
+    Example:
+        >>> asg_client = session.client('autoscaling', region_name='us-west-2')
+        >>> asgs = get_asgs_by_crdb_cluster(asg_client, 'prod-cluster')
+        >>> print(f"Found {len(asgs)} ASGs")
+    """
     try:
         asgs = []
         
@@ -142,7 +220,39 @@ def get_asgs_by_crdb_cluster(autoscaling_client, crdb_cluster_name, debug=False)
 
 
 def extract_instance_info(instance, asg_instance_map, debug=False):
-    """Extract relevant information from an instance."""
+    """Extract relevant information from an EC2 instance.
+    
+    Processes an EC2 instance dictionary from the AWS API and extracts key
+    information needed for reporting. Correlates instance data with ASG
+    information when available.
+    
+    Args:
+        instance (dict): EC2 instance dictionary from describe_instances API
+        asg_instance_map (dict): Mapping of instance IDs to ASG information.
+            Expected format: {instance_id: {'asg_name': str, 'lifecycle_state': str}}
+        debug (bool, optional): Enable verbose debug output showing extraction
+            progress and found details. Defaults to False.
+    
+    Returns:
+        dict: Dictionary containing extracted instance information with keys:
+            - instance_id (str): EC2 instance ID
+            - launch_template_version (str): Launch template version or 'N/A'
+            - launch_template_id (str): Launch template ID or 'N/A'
+            - launch_template_name (str): Launch template name or 'N/A'
+            - ami_id (str): AMI ID used by the instance
+            - instance_type (str): EC2 instance type
+            - state (str): Current instance state
+            - availability_zone (str): AZ where instance is running
+            - private_ip (str): Private IPv4 address
+            - launch_time (str): ISO formatted launch time
+            - crdb_cluster_name (str): Cluster name from tags
+            - asg_name (str): Auto Scaling Group name or 'N/A'
+            - asg_lifecycle_state (str): ASG lifecycle state or 'N/A'
+    
+    Example:
+        >>> info = extract_instance_info(instance_data, asg_map)
+        >>> print(f"Instance {info['instance_id']} in {info['availability_zone']}")
+    """
     instance_id = instance['InstanceId']
     
     # Get launch template version from tag
@@ -204,7 +314,37 @@ def extract_instance_info(instance, asg_instance_map, debug=False):
 
 
 def analyze_instances(session, region, crdb_cluster_name, debug=False):
-    """Main function to analyze instances by crdb_cluster_name tag."""
+    """Main function to analyze instances by crdb_cluster_name tag.
+    
+    Orchestrates the complete analysis workflow:
+    1. Discovers EC2 instances with the specified cluster tag
+    2. Finds related Auto Scaling Groups
+    3. Correlates instances with their ASGs
+    4. Generates comprehensive report with multiple summary sections
+    
+    The report includes detailed instance tables and statistical summaries
+    organized by ASG, availability zone, launch template version, instance
+    state, and ASG lifecycle state.
+    
+    Args:
+        session (boto3.Session): Configured boto3 session for AWS API access
+        region (str): AWS region to query for instances and ASGs
+        crdb_cluster_name (str): The cluster name to filter instances by
+        debug (bool, optional): Enable verbose debug output throughout the
+            analysis process. Defaults to False.
+    
+    Returns:
+        None: Prints formatted report to stdout. Returns early if no instances found.
+    
+    Example:
+        >>> session, region = get_session('prod', 'us-west-2')
+        >>> analyze_instances(session, region, 'merchant-svc-prod', debug=True)
+    
+    Note:
+        Requires appropriate AWS permissions:
+        - ec2:DescribeInstances
+        - autoscaling:DescribeAutoScalingGroups
+    """
     ec2_client = session.client('ec2', region_name=region)
     autoscaling_client = session.client('autoscaling', region_name=region)
     
@@ -329,6 +469,35 @@ def analyze_instances(session, region, crdb_cluster_name, debug=False):
 
 
 def main():
+    """Main entry point for the ASG report tool.
+    
+    Handles command-line argument parsing, AWS session setup, and coordinates
+    the execution of different reporting modes (list clusters vs analyze cluster).
+    Provides error handling and debug output management.
+    
+    Command-line Arguments:
+        --profile: AWS profile to use for authentication
+        --region: AWS region to query (defaults to session default)
+        --crdb-cluster-name: Target cluster name for analysis
+        --list-clusters: List available clusters and exit
+        --debug: Enable verbose debug output
+        --output: File path to save report (defaults to stdout)
+    
+    Exit Codes:
+        0: Success
+        1: Error occurred (missing arguments, AWS errors, etc.)
+    
+    Example:
+        Command line usage:
+        $ python asg_report.py --crdb-cluster-name prod-cluster --debug
+        $ python asg_report.py --list-clusters --region us-west-2
+        $ python asg_report.py --crdb-cluster-name test --output report.txt
+    
+    Note:
+        Either --list-clusters or --crdb-cluster-name must be provided.
+        AWS credentials must be configured via CLI, environment variables,
+        or IAM roles.
+    """
     parser = argparse.ArgumentParser(description='Lookup AWS instances by crdb_cluster_name tag')
     parser.add_argument('--profile', help='AWS profile to use')
     parser.add_argument('--region', help='AWS region to query (default: session default)')
