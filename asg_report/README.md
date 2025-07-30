@@ -1,12 +1,12 @@
 # ASG Report Tool
 
-A comprehensive Python script for analyzing AWS Auto Scaling Groups (ASGs) and EC2 instances based on the `crdb_cluster_name` tag. This tool provides detailed reporting on instance configurations, launch template versions, AMI IDs, availability zone distribution, and ASG lifecycle states.
+A comprehensive Python script for analyzing AWS Auto Scaling Groups (ASGs) and EC2 instances based on the `crdb_cluster_name` tag. This tool provides detailed reporting on instance configurations, launch template versions, AMI IDs, private IP addresses, availability zone distribution, and ASG lifecycle states.
 
 ## Features
 
 - **Instance Discovery**: Find all EC2 instances tagged with a specific `crdb_cluster_name`
 - **ASG Integration**: Correlate instances with their Auto Scaling Groups
-- **Comprehensive Reporting**: Detailed tables showing instance details, summaries by AZ, launch template versions, and more
+- **Comprehensive Reporting**: Detailed tables showing instance details including private IP addresses, summaries by AZ, launch template versions, and more
 - **Multi-Region Support**: Query instances across different AWS regions
 - **Profile Support**: Use different AWS profiles for access
 - **Debug Mode**: Verbose output for troubleshooting
@@ -90,6 +90,7 @@ Detailed table showing:
 - AMI ID
 - Instance type
 - Instance state
+- Private IPv4 address
 - Availability zone
 
 ### 3. Summary Sections
@@ -104,18 +105,18 @@ Detailed table showing:
 Here's an example of the tool's output for a production cluster:
 
 ```
-====================================================================================================================================================================================
+========================================================================================================================================================================================================
 INSTANCE REPORT FOR CRDB CLUSTER: merchant_financial-svc_prod
 Region: us-west-2
 Total Instances Found: 91
 Generated: 2025-07-30 08:53:37
-====================================================================================================================================================================================
+========================================================================================================================================================================================================
 
 INSTANCE DETAILS:
-Instance ID          ASG Name                                                ASG State       LT Ver   AMI ID                Type            State        AZ             
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-i-00cec71ae3e51686b  merchant_financial-svc_prod-20210420180424245200000013  InService       75       ami-010e5df62ced96f07 m7g.8xlarge     running      us-west-2a     
-i-012e462796173ffc4  merchant_financial-svc_prod-20210420180424245200000013  InService       75       ami-010e5df62ced96f07 m7g.8xlarge     running      us-west-2a     
+Instance ID          ASG Name                                                ASG State       LT Ver   AMI ID                Type            State        Private IP      AZ             
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+i-00cec71ae3e51686b  merchant_financial-svc_prod-20210420180424245200000013  InService       75       ami-010e5df62ced96f07 m7g.8xlarge     running      10.1.2.123      us-west-2a     
+i-012e462796173ffc4  merchant_financial-svc_prod-20210420180424245200000013  InService       75       ami-010e5df62ced96f07 m7g.8xlarge     running      10.1.2.156      us-west-2a     
 ...
 
 ======================================== AUTO SCALING GROUP SUMMARY ========================================
@@ -165,6 +166,7 @@ This type of report is valuable for:
 - **Version Management**: Tracking launch template version rollouts
 - **Health Monitoring**: Identifying instances not in desired states
 - **Availability Analysis**: Ensuring proper multi-AZ distribution
+- **Network Troubleshooting**: Having direct access to private IP addresses for connectivity issues
 - **Compliance Checking**: Verifying configuration consistency
 
 ## AWS Permissions Required

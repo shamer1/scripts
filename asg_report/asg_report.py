@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 """
 Script to lookup AWS instances by crdb_cluster_name tag.
-Provides detailed instance information including launch template versions, AMI IDs, and availability zones.
+Provides detailed instance information including launch template versions, AMI IDs, private IP addresses, and availability zones.
 
 Usage examples:
   # List all available CRDB clusters
-  python3 instance_lookup_by_crdb_cluster.py --list-clusters
+  python3 asg_report.py --list-clusters
 
   # Generate report for a specific CRDB cluster
-  python3 instance_lookup_by_crdb_cluster.py --crdb-cluster-name my-cluster
+  python3 asg_report.py --crdb-cluster-name my-cluster
 
   # Generate report with debug output
-  python3 instance_lookup_by_crdb_cluster.py --crdb-cluster-name my-cluster --debug
+  python3 asg_report.py --crdb-cluster-name my-cluster --debug
 
   # Generate report with specific AWS profile and region
-  python3 instance_lookup_by_crdb_cluster.py --profile prod --region us-west-2 --crdb-cluster-name my-cluster
+  python3 asg_report.py --profile prod --region us-west-2 --crdb-cluster-name my-cluster
 
   # Save report to file
-  python3 instance_lookup_by_crdb_cluster.py --crdb-cluster-name my-cluster --output cluster_instances.txt
+  python3 asg_report.py --crdb-cluster-name my-cluster --output cluster_instances.txt
 """
 
 import boto3
@@ -160,6 +160,7 @@ def extract_instance_info(instance, asg_instance_map, debug=False):
     instance_type = instance.get('InstanceType', 'N/A')
     state = instance.get('State', {}).get('Name', 'N/A')
     availability_zone = instance.get('Placement', {}).get('AvailabilityZone', 'N/A')
+    private_ip = instance.get('PrivateIpAddress', 'N/A')
     launch_time = instance.get('LaunchTime')
     launch_time_str = launch_time.isoformat() if launch_time else 'N/A'
     
@@ -194,6 +195,7 @@ def extract_instance_info(instance, asg_instance_map, debug=False):
         'instance_type': instance_type,
         'state': state,
         'availability_zone': availability_zone,
+        'private_ip': private_ip,
         'launch_time': launch_time_str,
         'crdb_cluster_name': crdb_cluster_name,
         'asg_name': asg_name,
@@ -240,17 +242,17 @@ def analyze_instances(session, region, crdb_cluster_name, debug=False):
     instance_info_list.sort(key=lambda x: (x['asg_name'], x['availability_zone'], x['instance_id']))
     
     # Generate report
-    print("=" * 180)
+    print("=" * 200)
     print(f"INSTANCE REPORT FOR CRDB CLUSTER: {crdb_cluster_name}")
     print(f"Region: {region}")
     print(f"Total Instances Found: {len(instance_info_list)}")
     print(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print("=" * 180)
+    print("=" * 200)
     
     # Instance details table
     print(f"\nINSTANCE DETAILS:")
-    print(f"{'Instance ID':<20} {'ASG Name':<55} {'ASG State':<15} {'LT Ver':<8} {'AMI ID':<21} {'Type':<15} {'State':<12} {'AZ':<15}")
-    print("-" * 180)
+    print(f"{'Instance ID':<20} {'ASG Name':<55} {'ASG State':<15} {'LT Ver':<8} {'AMI ID':<21} {'Type':<15} {'State':<12} {'Private IP':<15} {'AZ':<15}")
+    print("-" * 200)
     
     az_counts = Counter()
     lt_version_counts = Counter()
@@ -266,6 +268,7 @@ def analyze_instances(session, region, crdb_cluster_name, debug=False):
               f"{info['ami_id']:<21} "
               f"{info['instance_type']:<15} "
               f"{info['state']:<12} "
+              f"{info['private_ip']:<15} "
               f"{info['availability_zone']:<15}")
         
         # Count statistics
