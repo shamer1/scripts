@@ -94,9 +94,11 @@ if __name__ == "__main__":
     health_path = Path.home() / "Desktop" / "HEALTH"
     parser = argparse.ArgumentParser(description="Alert scraper and Jira creator")
     parser.add_argument("--dry_run", required=True, choices=["true", "false"], help="If true, do not create Jira issues, just print actions.")
+    parser.add_argument("-e", "--epic", required=True, help="Epic key for linking Jira issues (e.g., CRDBOP-4281)")
 
     args = parser.parse_args()
     dry_run = args.dry_run.lower() == "true"
+    epic_key = args.epic
 
     # --- Reporting: ALERTS file line count ---
     alerts_line_count = 0
@@ -149,7 +151,6 @@ if __name__ == "__main__":
         basic_auth=(username, password)
     )
     project_key = "CRDBOP"
-    epic_key = "CRDBOP-4281"
 
     for cluster, alerts in yellow_alerts.items():
         for alert in alerts:
