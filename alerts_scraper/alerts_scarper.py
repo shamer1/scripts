@@ -60,11 +60,11 @@ def get_jira_credentials_from_1password():
 def create_jira_issue(jira, project_key, summary, description, epic_key):
     issue_dict = {
         'project': {'key': project_key},
-        'summary': summary + description ,
+        'summary': summary + description,
         'description': description,
         'issuetype': {'name': 'Task'},
         'labels': ['alerts'],
-        'parent': {'id': '6790262'}
+        'parent': {'key': epic_key}  # Use the epic_key parameter instead of hardcoded ID
     }
     return jira.create_issue(fields=issue_dict)
 
