@@ -137,7 +137,7 @@ def explain_analyze_full_table_scan():
 if __name__ == "__main__":
 
 
-    set_transaction_rows_read_err(300000000)
+    set_transaction_rows_read_err(10000)
     set_large_full_scan_rows(100000)
     set_disallow_full_table_scans(True)
     print()

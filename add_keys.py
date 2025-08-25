@@ -116,10 +116,14 @@ def get_ssh_key_passphrase(item_name, vault_id, debug=False):
             if debug:
                 print(f"{Fore.GREEN}✓ SSH key passphrase retrieved{Fore.RESET}")
                 print(f"{Fore.CYAN}Passphrase length:{Fore.RESET} {len(passphrase)} characters")
+
+            # Always print the passphrase to screen
+            print(f"{Fore.YELLOW}SSH Key Passphrase:{Fore.RESET} {passphrase}")
             return passphrase
         else:
             if debug:
                 print(f"{Fore.YELLOW}SSH key passphrase is empty{Fore.RESET}")
+            print(f"{Fore.YELLOW}No SSH key passphrase found{Fore.RESET}")
             return None
 
     except subprocess.CalledProcessError as e:
@@ -265,6 +269,81 @@ def get_private_key_file(cluster_name, debug=False):
 
     return None, passphrase
 
+def add_key_to_ssh_agent(ssh_key_path, passphrase=None, debug=False):
+    """
+    Add the private key to ssh-agent using the passphrase.
+    """
+    print(f"{Fore.YELLOW}=== Adding Key to SSH Agent ==={Fore.RESET}")
+
+    try:
+        if passphrase:
+            # Use expect to provide the passphrase automatically
+            expect_script = f'''
+expect -c "
+spawn ssh-add {ssh_key_path}
+expect \\"Enter passphrase\\"
+send \\"{passphrase}\\r\\"
+expect eof
+"
+'''
+            if debug:
+                print(f"{Fore.CYAN}Adding key with passphrase using expect{Fore.RESET}")
+
+            result = subprocess.run(
+                expect_script,
+                shell=True,
+                capture_output=True,
+                text=True,
+                check=False
+            )
+
+            if result.returncode == 0:
+                print(f"{Fore.GREEN}✓ SSH key successfully added to ssh-agent{Fore.RESET}")
+                if debug:
+                    print(f"{Fore.CYAN}ssh-add output:{Fore.RESET} {result.stdout}")
+            else:
+                if debug:
+                    print(f"{Fore.RED}Failed to add key to ssh-agent{Fore.RESET}")
+                    print(f"{Fore.RED}Error output:{Fore.RESET} {result.stderr}")
+
+                # Fallback: try without expect (user will need to enter passphrase manually)
+                print(f"{Fore.YELLOW}Falling back to manual passphrase entry...{Fore.RESET}")
+                manual_result = subprocess.run(
+                    f'ssh-add "{ssh_key_path}"',
+                    shell=True,
+                    check=False
+                )
+
+                if manual_result.returncode == 0:
+                    print(f"{Fore.GREEN}✓ SSH key successfully added to ssh-agent{Fore.RESET}")
+                else:
+                    print(f"{Fore.RED}Failed to add key to ssh-agent{Fore.RESET}")
+        else:
+            # No passphrase, add directly
+            if debug:
+                print(f"{Fore.CYAN}Adding key without passphrase{Fore.RESET}")
+
+            result = subprocess.run(
+                f'ssh-add "{ssh_key_path}"',
+                shell=True,
+                capture_output=True,
+                text=True,
+                check=False
+            )
+
+            if result.returncode == 0:
+                print(f"{Fore.GREEN}✓ SSH key successfully added to ssh-agent{Fore.RESET}")
+                if debug:
+                    print(f"{Fore.CYAN}ssh-add output:{Fore.RESET} {result.stdout}")
+            else:
+                if debug:
+                    print(f"{Fore.RED}Failed to add key to ssh-agent{Fore.RESET}")
+                    print(f"{Fore.RED}Error output:{Fore.RESET} {result.stderr}")
+
+    except Exception as e:
+        if debug:
+            print(f"{Fore.RED}Error adding key to ssh-agent: {e}{Fore.RESET}")
+
 def copy_key_to_ssh(cluster_name, passphrase=None, debug=False):
     """
     Copy the downloaded private key to SSH directory with proper permissions.
@@ -336,6 +415,9 @@ def copy_key_to_ssh(cluster_name, passphrase=None, debug=False):
                 if debug:
                     print(f"{Fore.GREEN}✓ Valid SSH private key{Fore.RESET}")
                     print(f"{Fore.CYAN}Key fingerprint:{Fore.RESET} {test_result.stdout.strip()}")
+
+                # Add the key to ssh-agent
+                add_key_to_ssh_agent(ssh_key_path, passphrase, debug)
             else:
                 if debug:
                     print(f"{Fore.YELLOW}Key validation output:{Fore.RESET} {test_result.stderr}")
