@@ -356,14 +356,17 @@ def find_passphrase_item_for_cluster(cache, cluster_name, debug=False):
     # Try to find the passphrase item
     passphrase_item = cache.find_item_by_search_term_fast(passphrase_search_term)
 
-    # Filter out .pub items (public keys don't have passphrases)
-    if passphrase_item and not passphrase_item.lower().endswith('.pub'):
+    # Filter out .pub items AND items that contain the cluster name (those are key files, not passphrase items)
+    if passphrase_item and not passphrase_item.lower().endswith('.pub') and cluster_name not in passphrase_item:
         if debug:
             print(f"{Fore.GREEN}✓ Found passphrase item: {passphrase_item}{Fore.RESET}")
         return passphrase_item
     elif passphrase_item and passphrase_item.lower().endswith('.pub'):
         if debug:
             print(f"{Fore.YELLOW}⚠ Skipping .pub item (no passphrase): {passphrase_item}{Fore.RESET}")
+    elif passphrase_item and cluster_name in passphrase_item:
+        if debug:
+            print(f"{Fore.YELLOW}⚠ Skipping key file item (contains cluster name): {passphrase_item}{Fore.RESET}")
 
     # Fallback: try variations with both underscores and hyphens
     base_name = cluster_name.replace('-crdb-node-prod-usw2-doordash', '').replace('-crdb-node-prod', '')
@@ -409,57 +412,112 @@ def find_passphrase_item_for_cluster(cache, cluster_name, debug=False):
             print(f"  - {candidate}")
         item = cache.find_item_by_search_term_fast(candidate)
 
-        # Filter out .pub items here too
-        if item and not item.lower().endswith('.pub'):
+        # Filter out .pub items AND items that contain the cluster name
+        if item and not item.lower().endswith('.pub') and cluster_name not in item:
             if debug:
                 print(f"{Fore.GREEN}✓ Found passphrase item via fallback: {item}{Fore.RESET}")
             return item
         elif item and item.lower().endswith('.pub'):
             if debug:
                 print(f"{Fore.YELLOW}⚠ Skipping .pub item (fallback): {item}{Fore.RESET}")
+        elif item and cluster_name in item:
+            if debug:
+                print(f"{Fore.YELLOW}⚠ Skipping key file item (fallback, contains cluster name): {item}{Fore.RESET}")
 
     if debug:
         print(f"{Fore.RED}✗ No passphrase item found for cluster: {cluster_name}{Fore.RESET}")
 
     return None
 
-def get_ssh_key_passphrase_from_item(passphrase_item_name, vault_id, debug=False):
-    """Get SSH key passphrase from a specific 1Password item"""
-    # Safety check: never try to get passphrase from .pub items
-    if passphrase_item_name.lower().endswith('.pub'):
+def find_item_by_search_term_exact_match_only(cache, search_term):
+    """Find items by exact match only (no substring search)"""
+    if not cache._title_to_item_map:
+        cache.get_all_items()
+
+    search_lower = search_term.lower()
+
+    # Only direct match
+    if search_lower in cache._title_to_item_map:
+        return cache._title_to_item_map[search_lower]['title']
+
+    return None
+
+def find_passphrase_item_for_cluster_improved(cache, cluster_name, debug=False):
+    """Improved passphrase search that prioritizes exact matches and avoids key file items"""
+    # Transform cluster name to passphrase item format
+    base_name = cluster_name.replace('-crdb-node-prod-usw2-doordash', '').replace('-crdb-node-prod', '')
+    base_name_with_hyphens = base_name.replace('_', '-')
+    base_name_with_underscores = base_name.replace('-', '_')
+
+    # Priority candidates (most likely to be correct)
+    priority_candidates = [
+        f"{base_name_with_hyphens} crdb prod",
+        f"{base_name_with_underscores} crdb prod",
+        f"{base_name_with_hyphens} crdb",
+        f"{base_name_with_underscores} crdb"
+    ]
+
+    if debug:
+        print(f"{Fore.CYAN}Searching for passphrase item for '{cluster_name}' using priority candidates:{Fore.RESET}")
+
+    # Try priority candidates with exact match first
+    for candidate in priority_candidates:
         if debug:
-            print(f"{Fore.YELLOW}⚠ Skipping passphrase retrieval from .pub item: {passphrase_item_name}{Fore.RESET}")
-        return None
+            print(f"  - {candidate}")
 
-    try:
-        result = subprocess.run(
-            f'op item get "{passphrase_item_name}" --vault {vault_id} --fields label=ssh-key-passphrase --reveal',
-            shell=True,
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=30
-        )
-
-        passphrase = result.stdout.strip()
-
-        if passphrase:
+        # Try exact match first
+        item = find_item_by_search_term_exact_match_only(cache, candidate)
+        if item and not item.lower().endswith('.pub') and cluster_name not in item:
             if debug:
-                print(f"{Fore.GREEN}✓ Found passphrase in {passphrase_item_name}{Fore.RESET}")
-            return passphrase
-        else:
-            if debug:
-                print(f"{Fore.YELLOW}⚠ Empty passphrase in {passphrase_item_name}{Fore.RESET}")
-            return None
+                print(f"{Fore.GREEN}✓ Found passphrase item (exact match): {item}{Fore.RESET}")
+            return item
 
-    except subprocess.CalledProcessError as e:
+    # If exact matches fail, try substring search but with stricter filtering
+    if debug:
+        print(f"{Fore.CYAN}Trying substring search with strict filtering:{Fore.RESET}")
+
+    for candidate in priority_candidates:
         if debug:
-            print(f"{Fore.RED}✗ No passphrase field found in {passphrase_item_name}: {e}{Fore.RESET}")
-        return None
-    except Exception as e:
+            print(f"  - {candidate} (substring)")
+
+        item = cache.find_item_by_search_term_fast(candidate)
+        if item and not item.lower().endswith('.pub') and cluster_name not in item and '-crdb-node-prod' not in item:
+            if debug:
+                print(f"{Fore.GREEN}✓ Found passphrase item (substring match): {item}{Fore.RESET}")
+            return item
+        elif item:
+            if debug:
+                reason = "contains cluster name" if cluster_name in item else "contains -crdb-node-prod" if '-crdb-node-prod' in item else "is .pub file"
+                print(f"{Fore.YELLOW}⚠ Skipping item ({reason}): {item}{Fore.RESET}")
+
+    # Extended fallback candidates
+    extended_candidates = [
+        f"{base_name_with_hyphens}-crdb-prod",
+        f"{base_name_with_underscores}-crdb-prod",
+        f"{base_name_with_hyphens}_crdb_prod",
+        f"{base_name_with_underscores}_crdb_prod",
+        base_name_with_hyphens,
+        base_name_with_underscores,
+        base_name
+    ]
+
+    if debug:
+        print(f"{Fore.CYAN}Trying extended fallback candidates:{Fore.RESET}")
+
+    for candidate in extended_candidates:
         if debug:
-            print(f"{Fore.RED}✗ Error retrieving passphrase from {passphrase_item_name}: {e}{Fore.RESET}")
-        return None
+            print(f"  - {candidate}")
+
+        item = cache.find_item_by_search_term_fast(candidate)
+        if item and not item.lower().endswith('.pub') and cluster_name not in item and '-crdb-node-prod' not in item:
+            if debug:
+                print(f"{Fore.GREEN}✓ Found passphrase item (extended fallback): {item}{Fore.RESET}")
+            return item
+
+    if debug:
+        print(f"{Fore.RED}✗ No passphrase item found for cluster: {cluster_name}{Fore.RESET}")
+
+    return None
 
 def download_private_key_ultra_fast(item_name, cluster_name, vault_id, item_details=None, debug=False):
     """Ultra-fast download using cached item details"""
@@ -688,8 +746,8 @@ def process_clusters_sequential(clusters, cache, vault_id, debug=False):
         else:
             cluster_to_key_items[cluster_name] = None
 
-        # Find passphrase item (separate from key item)
-        passphrase_item_name = find_passphrase_item_for_cluster(cache, cluster_name, debug)
+        # Find passphrase item (separate from key item) - use improved search
+        passphrase_item_name = find_passphrase_item_for_cluster_improved(cache, cluster_name, debug)
         if passphrase_item_name:
             cluster_to_passphrase_items[cluster_name] = passphrase_item_name
             passphrase_item_names_needed.add(passphrase_item_name)
@@ -819,9 +877,8 @@ def process_all_clusters_ultra_fast(account, debug=False):
         total_successful += successful
         total_failed += failed
 
-    print(f"\n{Fore.GREEN}Success: {total_successful}{Fore.RESET} | {Fore.RED}Failed: {total_failed}{Fore.RESET}")
-    if debug:
-        print(f"{Fore.YELLOW}Note: Failed items include clusters without passphrases in 1Password{Fore.RESET}")
+    # Return the totals instead of printing them here
+    return total_successful, total_failed
 
 def main():
     parser = argparse.ArgumentParser(description="Ultra-fast SSH key retrieval from 1Password")
@@ -843,9 +900,13 @@ def main():
     # Setup clean temp directory
     setup_temp_directory(args.debug)
 
+    # Store results for final summary
+    total_successful = 0
+    total_failed = 0
+
     try:
         if args.add_all:
-            process_all_clusters_ultra_fast(args.account, args.debug)
+            total_successful, total_failed = process_all_clusters_ultra_fast(args.account, args.debug)
         else:
             vault_id = 'lfnuhv7jc72reknrdqlkup2ubm'
             cache = OnePasswordCache(args.account, vault_id)
@@ -854,10 +915,57 @@ def main():
 
             if success:
                 print(f"{Fore.GREEN}✓ Successfully processed {args.cluster}{Fore.RESET}")
+                total_successful = 1
+                total_failed = 0
             else:
                 print(f"{Fore.RED}✗ Failed to process {args.cluster}{Fore.RESET}")
+                total_successful = 0
+                total_failed = 1
     finally:
         cleanup_temp_keys(args.debug)
+
+        # Print final summary as the very last thing
+        if args.add_all or args.cluster:
+            print(f"\n{Fore.GREEN}Success: {total_successful}{Fore.RESET} | {Fore.RED}Failed: {total_failed}{Fore.RESET}")
+            print(f"{Fore.YELLOW}Note: Failed items include clusters without passphrases in 1Password{Fore.RESET}")
+
+def get_ssh_key_passphrase_from_item(passphrase_item_name, vault_id, debug=False):
+    """Get SSH key passphrase from a specific 1Password item"""
+    # Safety check: never try to get passphrase from .pub items
+    if passphrase_item_name.lower().endswith('.pub'):
+        if debug:
+            print(f"{Fore.YELLOW}⚠ Skipping passphrase retrieval from .pub item: {passphrase_item_name}{Fore.RESET}")
+        return None
+
+    try:
+        result = subprocess.run(
+            f'op item get "{passphrase_item_name}" --vault {vault_id} --fields label=ssh-key-passphrase --reveal',
+            shell=True,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=30
+        )
+
+        passphrase = result.stdout.strip()
+
+        if passphrase:
+            if debug:
+                print(f"{Fore.GREEN}✓ Found passphrase in {passphrase_item_name}{Fore.RESET}")
+            return passphrase
+        else:
+            if debug:
+                print(f"{Fore.YELLOW}⚠ Empty passphrase in {passphrase_item_name}{Fore.RESET}")
+            return None
+
+    except subprocess.CalledProcessError as e:
+        if debug:
+            print(f"{Fore.RED}✗ No passphrase field found in {passphrase_item_name}: {e}{Fore.RESET}")
+        return None
+    except Exception as e:
+        if debug:
+            print(f"{Fore.RED}✗ Error retrieving passphrase from {passphrase_item_name}: {e}{Fore.RESET}")
+        return None
 
 if __name__ == "__main__":
     main()
