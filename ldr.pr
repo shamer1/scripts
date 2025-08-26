@@ -1,0 +1,86 @@
+import subprocess
+import re
+import os
+
+def extract_replication_info():
+    """
+    Find files with 'enable_logical_data_replication' and extract:
+    - service_name
+    - crdb_version
+    - logical_data_replication_sources cluster
+    - logical_data_replication_destinations cluster
+    """
+
+    # Step 1: Find files containing 'enable_logical_data_replication'
+    try:
+        # Updated to search in ~/git/infrastructure directory
+        search_dir = os.path.expanduser('~/git/infrastructure')
+        grep_result = subprocess.run(
+            ['grep', '-ir', 'enable_logical_data_replication', search_dir],
+            capture_output=True,
+            text=True
+        )
+
+        if grep_result.returncode != 0:
+            print(f"No files found containing 'enable_logical_data_replication' in {search_dir}")
+            return
+
+        # Extract unique filenames
+        files = set()
+        for line in grep_result.stdout.strip().split('\n'):
+            if line:
+                filename = line.split(':', 1)[0]
+                files.add(filename)
+
+        if not files:
+            print("No files extracted")
+            return
+
+        # Step 2: Process each file to extract the required information
+        for file in files:
+            if os.path.isfile(file):
+                print(f"\n=== File: {file} ===")
+                try:
+                    with open(file, 'r', encoding='utf-8', errors='ignore') as f:
+                        content = f.read()
+
+                    # Extract service_name
+                    service_name_match = re.search(r'service_name\s*[=:]\s*["\']?([^"\'\s\n]+)["\']?', content)
+                    if service_name_match:
+                        print(f"service_name: {service_name_match.group(1)}")
+
+                    # Extract crdb version from source
+                    source_match = re.search(r'source\s*[=:]\s*["\']?([^"\'\s\n]+)["\']?', content)
+                    if source_match:
+                        source_value = source_match.group(1)
+                        # Extract version reference (ref=vX.X.X_XX)
+                        version_match = re.search(r'ref=(v[0-9]+\.[0-9]+\.[0-9]+_[0-9]+)', source_value)
+                        if version_match:
+                            print(f"crdb_version: {version_match.group(1)}")
+
+                    # Extract logical_data_replication_sources cluster
+                    sources_pattern = r'logical_data_replication_sources\s*=\s*\[(.*?)\]'
+                    sources_match = re.search(sources_pattern, content, re.DOTALL)
+                    if sources_match:
+                        sources_content = sources_match.group(1)
+                        cluster_match = re.search(r'cluster\s*[=:]\s*["\']?([^"\'\s\n,}]+)', sources_content)
+                        if cluster_match:
+                            print(f"ldr_sources: {cluster_match.group(1)}")
+
+                    # Extract logical_data_replication_destinations cluster
+                    destinations_pattern = r'logical_data_replication_destinations\s*=\s*\[(.*?)\]'
+                    destinations_match = re.search(destinations_pattern, content, re.DOTALL)
+                    if destinations_match:
+                        destinations_content = destinations_match.group(1)
+                        cluster_match = re.search(r'cluster\s*[=:]\s*["\']?([^"\'\s\n,}]+)', destinations_content)
+                        if cluster_match:
+                            print(f"ldr_destinations: {cluster_match.group(1)}")
+
+                except Exception as e:
+                    print(f"Error reading file {file}: {e}")
+
+    except subprocess.CalledProcessError as e:
+        print(f"Error running grep command: {e}")
+
+if __name__ == "__main__":
+    extract_replication_info()
