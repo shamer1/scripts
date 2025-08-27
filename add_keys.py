@@ -443,8 +443,68 @@ def find_item_by_search_term_exact_match_only(cache, search_term):
     return None
 
 def find_passphrase_item_for_cluster_improved(cache, cluster_name, debug=False):
-    """Improved passphrase search that prioritizes exact matches and avoids key file items"""
-    # Transform cluster name to passphrase item format
+    """Improved passphrase search that prioritizes exact matches and handles complex naming patterns"""
+
+    if debug:
+        print(f"{Fore.CYAN}=== Processing passphrase search for: {cluster_name} ==={Fore.RESET}")
+
+    # Handle complex naming patterns first
+    base_service_name = None
+
+    # Pattern 1: "service-crdb Prod - service-crdb-node-prod" -> "service"
+    # Example: "lx-hub-crdb Prod - lx-hub-crdb-node-prod" -> "lx-hub"
+    match = re.match(r'^(.+?)-crdb\s+Prod\s+-\s+\1-crdb-node-prod', cluster_name)
+    if match:
+        base_service_name = match.group(1)
+        if debug:
+            print(f"{Fore.CYAN}Pattern 1 matched: extracted '{base_service_name}' from complex pattern{Fore.RESET}")
+
+    # Pattern 2: "service crdb prod - service-crdb-node-prod" -> "service"
+    if not base_service_name:
+        match = re.match(r'^(.+?)\s+crdb\s+prod\s+-\s+.+-crdb-node-prod', cluster_name)
+        if match:
+            base_service_name = match.group(1)
+            if debug:
+                print(f"{Fore.CYAN}Pattern 2 matched: extracted '{base_service_name}'{Fore.RESET}")
+
+    # If we found a base service name from patterns, use it
+    if base_service_name:
+        # Generate primary candidates based on extracted service name
+        primary_candidates = [
+            f"{base_service_name} crdb prod",
+            f"{base_service_name.replace('_', '-')} crdb prod",
+            f"{base_service_name.replace('-', '_')} crdb prod",
+            f"{base_service_name} crdb",
+            f"{base_service_name.replace('_', '-')} crdb",
+            f"{base_service_name.replace('-', '_')} crdb"
+        ]
+
+        if debug:
+            print(f"{Fore.CYAN}Using pattern-based candidates for '{base_service_name}':{Fore.RESET}")
+            for candidate in primary_candidates:
+                print(f"  - {candidate}")
+
+        # Try pattern-based candidates first
+        for candidate in primary_candidates:
+            # Try exact match first
+            item = find_item_by_search_term_exact_match_only(cache, candidate)
+            if item and not item.lower().endswith('.pub') and cluster_name not in item:
+                if debug:
+                    print(f"{Fore.GREEN}✓ Found passphrase item (pattern exact match): {item}{Fore.RESET}")
+                return item
+
+        # Try substring search for pattern-based candidates
+        for candidate in primary_candidates:
+            item = cache.find_item_by_search_term_fast(candidate)
+            if item and not item.lower().endswith('.pub') and cluster_name not in item and '-crdb-node-prod' not in item:
+                if debug:
+                    print(f"{Fore.GREEN}✓ Found passphrase item (pattern substring match): {item}{Fore.RESET}")
+                return item
+
+    # Fallback to original logic if pattern matching fails
+    if debug:
+        print(f"{Fore.CYAN}Falling back to original search logic...{Fore.RESET}")
+
     base_name = cluster_name.replace('-crdb-node-prod-usw2-doordash', '').replace('-crdb-node-prod', '')
     base_name_with_hyphens = base_name.replace('_', '-')
     base_name_with_underscores = base_name.replace('-', '_')
