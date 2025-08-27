@@ -497,6 +497,15 @@ def find_passphrase_item_for_cluster_improved(cache, cluster_name, debug=False):
             if debug:
                 print(f"{Fore.CYAN}Pattern 5 matched: extracted '{base_service_name}' from crdb-prefix pattern{Fore.RESET}")
 
+    # Pattern 6: "service crdb - Prod - service-crdb-node-prod" -> "service"
+    # Example: "geo crdb - Prod - geo-crdb-node-prod" -> "geo"
+    if not base_service_name:
+        match = re.match(r'^(.+?)\s+crdb\s+-\s+Prod\s+-\s+\1-crdb-node-prod', cluster_name)
+        if match:
+            base_service_name = match.group(1)
+            if debug:
+                print(f"{Fore.CYAN}Pattern 6 matched: extracted '{base_service_name}' from crdb-Prod pattern{Fore.RESET}")
+
     # If we found a base service name from patterns, use it
     if base_service_name:
         # Generate primary candidates based on extracted service name
