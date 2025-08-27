@@ -544,6 +544,36 @@ def find_passphrase_item_for_cluster_improved(cache, cluster_name, debug=False):
                         print(f"{Fore.CYAN}Pattern 7 matched: found '{base_service_name}' for complex transformation{Fore.RESET}")
                     break
 
+    # Pattern 8: Simple "service-crdb-node-prod" -> "service crdb prod"
+    # Example: "revenue-workflow-alpha-crdb-node-prod" -> "revenue-workflow-alpha"
+    if not base_service_name:
+        match = re.match(r'^(.+?)-crdb-node-prod$', cluster_name)
+        if match:
+            base_service_name = match.group(1)
+            if debug:
+                print(f"{Fore.CYAN}Pattern 8 matched: extracted '{base_service_name}' from simple crdb-node-prod pattern{Fore.RESET}")
+
+    # Pattern 9: "service service crdb prod - service-service-crdb-node-prod" -> "service-service"
+    # Also handles: "catalog service crdb prod - catalog-service-crdb-node-prod" -> "catalog-service"
+    if not base_service_name:
+        # First try exact match pattern
+        match = re.match(r'^(.+?)\s+service\s+crdb\s+prod\s+-\s+\1-service-crdb-node-prod', cluster_name)
+        if match:
+            base_service_name = f"{match.group(1)}-service"
+            if debug:
+                print(f"{Fore.CYAN}Pattern 9a matched: extracted '{base_service_name}' from exact service-space pattern{Fore.RESET}")
+        else:
+            # Try more flexible pattern where first part + "service" matches second part
+            match = re.match(r'^(.+?)\s+service\s+crdb\s+prod\s+-\s+(.+?)-service-crdb-node-prod', cluster_name)
+            if match:
+                first_part = match.group(1)
+                second_part = match.group(2)
+                # Check if first_part matches second_part (allowing for hyphen/underscore differences)
+                if first_part.replace('_', '-') == second_part.replace('_', '-'):
+                    base_service_name = f"{first_part.replace('_', '-')}-service"
+                    if debug:
+                        print(f"{Fore.CYAN}Pattern 9b matched: extracted '{base_service_name}' from flexible service-space pattern{Fore.RESET}")
+
     # If we found a base service name from patterns, use it
     if base_service_name:
         # Generate primary candidates based on extracted service name
@@ -578,7 +608,7 @@ def find_passphrase_item_for_cluster_improved(cache, cluster_name, debug=False):
 
     # Fallback to original logic if pattern matching fails
     if debug:
-        print(f"{Fore.CYAN}Falling back to original search logic...{Fore.RESET}")
+        print(f"{Fore.RED}Falling back to original search logic...{Fore.RESET}")
 
     base_name = cluster_name.replace('-crdb-node-prod-usw2-doordash', '').replace('-crdb-node-prod', '')
     base_name_with_hyphens = base_name.replace('_', '-')
