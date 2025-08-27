@@ -467,15 +467,34 @@ def find_passphrase_item_for_cluster_improved(cache, cluster_name, debug=False):
             if debug:
                 print(f"{Fore.CYAN}Pattern 2 matched: extracted '{base_service_name}'{Fore.RESET}")
 
+    # Pattern 3: "service_name-crdb prod - service_name-crdb-node-prod" -> "service-name"
+    # Example: "doordash_api_gateway-crdb prod - doordash_api_gateway-crdb-node-prod" -> "doordash-api-gateway"
+    if not base_service_name:
+        match = re.match(r'^(.+?)-crdb\s+prod\s+-\s+\1-crdb-node-prod', cluster_name)
+        if match:
+            base_service_name = match.group(1).replace('_', '-')  # Convert underscores to hyphens
+            if debug:
+                print(f"{Fore.CYAN}Pattern 3 matched: extracted '{base_service_name}' (converted underscores to hyphens){Fore.RESET}")
+
+    # Pattern 4: Handle mixed underscore/hyphen patterns
+    # Example: "doordash_api_gateway-crdb prod - doordash_api_gateway-crdb-node-prod" -> try "doordash-api-gateway"
+    if not base_service_name:
+        match = re.match(r'^(.+?)[-_]crdb\s+prod\s+-\s+(.+?)[-_]crdb-node-prod', cluster_name)
+        if match:
+            service_part1 = match.group(1)
+            service_part2 = match.group(2)
+            # Use the first part but normalize it
+            base_service_name = service_part1.replace('_', '-')
+            if debug:
+                print(f"{Fore.CYAN}Pattern 4 matched: extracted '{base_service_name}' from mixed pattern{Fore.RESET}")
+
     # If we found a base service name from patterns, use it
     if base_service_name:
         # Generate primary candidates based on extracted service name
         primary_candidates = [
             f"{base_service_name} crdb prod",
-            f"{base_service_name.replace('_', '-')} crdb prod",
-            f"{base_service_name.replace('-', '_')} crdb prod",
+            f"{base_service_name.replace('-', '_')} crdb prod",  # Try with underscores too
             f"{base_service_name} crdb",
-            f"{base_service_name.replace('_', '-')} crdb",
             f"{base_service_name.replace('-', '_')} crdb"
         ]
 
