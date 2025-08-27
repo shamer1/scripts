@@ -506,6 +506,44 @@ def find_passphrase_item_for_cluster_improved(cache, cluster_name, debug=False):
             if debug:
                 print(f"{Fore.CYAN}Pattern 6 matched: extracted '{base_service_name}' from crdb-Prod pattern{Fore.RESET}")
 
+    # Pattern 7: "service-name prod - transformed_service_name-crdb-node-prod" -> handle complex transformations
+    # Example: "merchant-financial-service prod - merchant_finance_service-crdb-node-prod" -> "merchant-financial-svc"
+    if not base_service_name:
+        match = re.match(r'^(.+?)\s+prod\s+-\s+(.+?)-crdb-node-prod', cluster_name)
+        if match:
+            original_service = match.group(1)
+            transformed_service = match.group(2)
+
+            # Try various transformations of the original service name
+            candidates_to_try = []
+
+            # 1. Try the original service name as-is
+            candidates_to_try.append(original_service)
+
+            # 2. Try abbreviating "service" to "svc"
+            if 'service' in original_service:
+                candidates_to_try.append(original_service.replace('service', 'svc'))
+                candidates_to_try.append(original_service.replace('-service', '-svc'))
+
+            # 3. Try the transformed service name converted back to hyphens
+            transformed_with_hyphens = transformed_service.replace('_', '-')
+            candidates_to_try.append(transformed_with_hyphens)
+
+            # 4. Try abbreviated version of transformed name
+            if 'service' in transformed_with_hyphens:
+                candidates_to_try.append(transformed_with_hyphens.replace('service', 'svc'))
+                candidates_to_try.append(transformed_with_hyphens.replace('-service', '-svc'))
+
+            # Test each candidate to see if it exists in the cache
+            for candidate in candidates_to_try:
+                test_passphrase_name = f"{candidate} crdb prod"
+                # Quick check if this item exists
+                if cache.find_item_by_search_term_fast(test_passphrase_name):
+                    base_service_name = candidate
+                    if debug:
+                        print(f"{Fore.CYAN}Pattern 7 matched: found '{base_service_name}' for complex transformation{Fore.RESET}")
+                    break
+
     # If we found a base service name from patterns, use it
     if base_service_name:
         # Generate primary candidates based on extracted service name
