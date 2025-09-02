@@ -11,9 +11,9 @@ This script queries the specified metric and displays:
 - Earliest timestamp when failures occurred per node
 
 Usage:
-    $ python backup_resume_failed_query.py
-    $ python backup_resume_failed_query.py --export-json
-    $ python backup_resume_failed_query.py --export-json backup_failures.json
+    $ python jobs_failed.py
+    $ python jobs_failed.py --export-json
+    $ python jobs_failed.py --export-json backup_failures.json
 
 Requirements:
     - requests>=2.25.0
@@ -59,9 +59,6 @@ def query_backup_resume_failed():
     """
     Query Chronosphere for jobs_backup_resume_failed metrics over time range.
 
-    Queries the Chronosphere API using a range query to fetch backup resume failure metrics
-    for the specified account, cluster, and job over the last 7 days.
-
     Returns:
         list: List of metric dictionaries containing metric data and time series values.
               Each result contains 'metric' dict with labels and 'values' with [[timestamp, value], ...].
@@ -72,8 +69,8 @@ def query_backup_resume_failed():
     """
     base_url = "https://doordash.chronosphere.io/data/metrics/api/v1/query_range"
 
-    # The query you specified with time range to get historical data
-    query = 'jobs_backup_resume_failed{account_id="611706558220",cluster="selection_growth_prod",job="crdb"}'
+    # The query with hardcoded values
+    query = 'jobs_backup_resume_failed{account_id="611706558220",job="crdb"}'
 
     # Query parameters for range query (last 7 days with 1 hour step)
     params = {
