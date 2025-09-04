@@ -70,14 +70,15 @@ def query_backup_resume_failed():
     base_url = "https://doordash.chronosphere.io/data/metrics/api/v1/query_range"
 
     # The query with hardcoded values
-    query = 'jobs_backup_resume_failed{account_id="611706558220",job="crdb"}'
+    query = 'jobs_backup_resume_failed{account_id="611706558220",cluster="selection_growth_prod",job="crdb"}'
 
     # Query parameters for range query (last 7 days with 1 hour step)
     params = {
         'query': query,
         'start': str(int((datetime.now().timestamp() - 7*24*3600))),  # 7 days ago
         'end': str(int(datetime.now().timestamp())),  # now
-        'step': '3600'  # 1 hour step
+        # 'step': '3600'  # 1 hour step
+        'step': '300'   # 5 min step
     }
 
     try:
